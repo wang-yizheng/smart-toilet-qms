@@ -17,6 +17,7 @@ import { nonconformingRouter } from './modules/nonconforming'
 import { statsRouter } from './modules/stats'
 import { reportsRouter } from './modules/reports'
 import { announcementsRouter } from './modules/announcements'
+import { logsRouter } from './modules/logs'
 
 export const createApp = (): Application => {
   const app = express()
@@ -56,6 +57,7 @@ export const createApp = (): Application => {
   app.use(`${env.API_PREFIX}/stats`, statsRouter)
   app.use(`${env.API_PREFIX}/reports`, reportsRouter)
   app.use(`${env.API_PREFIX}/announcements`, announcementsRouter)
+  app.use(`${env.API_PREFIX}/logs`, logsRouter)
 
   app.use(errorHandler)
 

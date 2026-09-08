@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { query } from '../config/db'
 import { authenticate, requireRole } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
+import { writeLog } from '../lib/logger'
 
 export const itemsRouter = Router()
 export const standardsRouter = Router()
@@ -65,6 +66,11 @@ standardsRouter.post('/', requireRole('admin', 'qc_manager'), async (req, res, n
          upper_bound=EXCLUDED.upper_bound, method=EXCLUDED.method
        RETURNING *`,
       [b.product_id, b.item_id, b.nominal ?? null, b.lower_bound ?? null, b.upper_bound ?? null, b.method ?? null]
+    )
+    await writeLog(
+      req.user!.userId,
+      'standard.update',
+      `调整产品 #${b.product_id} 检测项 #${b.item_id} 标准：${b.nominal ?? '-'}（${b.lower_bound ?? '-∞'} ~ ${b.upper_bound ?? '+∞'}）`
     )
     res.status(201).json(r[0])
   } catch (e) { next(e) }

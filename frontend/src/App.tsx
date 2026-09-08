@@ -14,6 +14,7 @@ import Standards from './pages/Standards'
 import Reports from './pages/Reports'
 import Announcements from './pages/Announcements'
 import Users from './pages/Users'
+import Logs from './pages/Logs'
 import NotFound from './pages/NotFound'
 
 const queryClient = new QueryClient({
@@ -56,6 +57,7 @@ function App() {
                 <Route path="/reports" element={<Reports />} />
                 <Route path="/announcements" element={<Announcements />} />
                 <Route path="/users" element={<Users />} />
+                <Route path="/logs" element={<Logs />} />
               </Route>
               <Route path="*" element={<NotFound />} />
             </Routes>

@@ -10,6 +10,7 @@ import {
   FileText,
   Bell,
   Users,
+  History,
   LogOut,
   Toilet,
 } from 'lucide-react'
@@ -43,6 +44,7 @@ const NAV: NavItem[] = [
   { to: '/reports', label: '报表与追溯', icon: <FileText className="h-4 w-4" />, roles: ['admin', 'qc_manager', 'inspector', 'producer'] },
   { to: '/announcements', label: '公告通知', icon: <Bell className="h-4 w-4" />, roles: ['admin', 'qc_manager', 'inspector', 'producer'] },
   { to: '/users', label: '用户管理', icon: <Users className="h-4 w-4" />, roles: ['admin'] },
+  { to: '/logs', label: '操作日志', icon: <History className="h-4 w-4" />, roles: ['admin', 'qc_manager'] },
 ]
 
 const TITLES: Record<string, string> = {
@@ -55,6 +57,7 @@ const TITLES: Record<string, string> = {
   '/reports': '报表与质量追溯',
   '/announcements': '公告通知',
   '/users': '用户管理',
+  '/logs': '操作日志',
 }
 
 export function AppLayout() {

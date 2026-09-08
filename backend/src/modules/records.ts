@@ -4,6 +4,7 @@ import { query } from '../config/db'
 import { authenticate } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
 import { judgeMeasurement, aggregateResult } from '../lib/judge'
+import { writeLog } from '../lib/logger'
 
 export const recordsRouter = Router()
 recordsRouter.use(authenticate)
@@ -127,6 +128,8 @@ recordsRouter.post('/', async (req: Request, res: Response, next: NextFunction) 
       env_note: b.env_note,
       results: b.results,
     })
+    const verdictLabel = record.result === 'pass' ? '合格' : record.result === 'fail' ? '不合格' : '待判定'
+    await writeLog(req.user!.userId, 'record.create', `录入检测记录 ${record.record_no}，判定：${verdictLabel}`)
     res.status(201).json(record)
   } catch (e) { next(e) }
 })
@@ -223,6 +226,7 @@ recordsRouter.patch('/:id/review', async (req, res, next) => {
       [Number(req.params.id)]
     )
     if (!rows.length) throw new AppError(404, '记录不存在')
+    await writeLog(req.user!.userId, 'record.review', `审核检测记录 ${rows[0].record_no ?? '#' + rows[0].id}，结论：已完成`)
     res.json(rows[0])
   } catch (e) { next(e) }
 })

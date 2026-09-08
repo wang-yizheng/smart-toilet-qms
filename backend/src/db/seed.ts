@@ -75,6 +75,8 @@ const PRODUCTS = [
 
 const DEFECT_LEVELS = ['轻微', '一般', '严重']
 const DISPOSITIONS = ['返工', '返修', '让步接收', '报废']
+const TASK_TYPES = ['出厂', '过程', '型式']
+const TASK_STATUS = ['待派工', '待检测', '检测中', '待审核', '已完成', '已终止']
 
 function genValue(item: ItemDef, forceBad: boolean): number {
   let v: number
@@ -170,8 +172,6 @@ export async function seedIfEmpty(force = false) {
   }
 
   // tasks
-  const TASK_TYPES = ['出厂', '过程', '型式']
-  const TASK_STATUS = ['待派工', '待检测', '检测中', '待审核', '已完成', '已终止']
   let taskSeq = 1
   for (let i = 0; i < 42; i++) {
     const bm = pick(batchesMeta)
@@ -263,7 +263,57 @@ export async function seedIfEmpty(force = false) {
     ['检测标准变更', '水温判定下限由 34℃ 调整为 35℃，即日起执行。', false, 2]
   )
 
+  // operation logs (audit trail demo data)
+  await seedOperationLogsIfEmpty(force)
+
   console.log(`Seed complete: ${PRODUCTS.length} products, ${batchesMeta.length} batches, ${RECORD_COUNT} records, ${ncRows.length} nonconforming.`)
+}
+
+/* --------------------------- operation logs --------------------------- */
+const LOG_TOTAL = 180
+
+const LOG_TEMPLATES: { action: string; weight: number; detail: () => string }[] = [
+  { action: 'login', weight: 26, detail: () => '登录系统' },
+  { action: 'record.create', weight: 22, detail: () => `录入检测记录 R${String(1 + Math.floor(rnd() * 360)).padStart(5, '0')}，判定：${rnd() < 0.1 ? '不合格' : '合格'}` },
+  { action: 'record.review', weight: 14, detail: () => `审核检测记录 R${String(1 + Math.floor(rnd() * 360)).padStart(5, '0')}，结论：已完成` },
+  { action: 'task.status', weight: 12, detail: () => `任务 T${String(1 + Math.floor(rnd() * 42)).padStart(4, '0')} 状态变更为「${pick(TASK_STATUS)}」` },
+  { action: 'task.create', weight: 10, detail: () => `创建${pick(TASK_TYPES)}检测任务 T${String(1 + Math.floor(rnd() * 42)).padStart(4, '0')}` },
+  { action: 'nc.dispose', weight: 8, detail: () => `不合格品 #${1 + Math.floor(rnd() * 20)} 处置：${pick(DISPOSITIONS)}，状态：${pick(['待处理', '审批中', '已闭环'])}` },
+  { action: 'standard.update', weight: 4, detail: () => `调整检测标准：${pick(ITEMS).name} 判定阈值` },
+  { action: 'announcement.create', weight: 2, detail: () => `发布公告：${pick(['质量月报发布通知', '检测标准变更', '产线整改要求'])}` },
+  { action: 'user.update', weight: 2, detail: () => `修改用户 #${1 + Math.floor(rnd() * 8)}：status` },
+]
+
+/**
+ * Fill the audit trail with historical entries for the demo.
+ * Runs independently from the business seed so an existing database also gets logs.
+ */
+export async function seedOperationLogsIfEmpty(force = false) {
+  const existing = await query('SELECT count(*) FROM operation_logs')
+  if (!force && Number(existing[0].count) > 0) return 0
+
+  const users = await query(`SELECT id FROM users WHERE role IN ('admin','qc_manager','inspector')`)
+  const actorIds: number[] = users.map((u: any) => u.id)
+  if (!actorIds.length) return 0
+
+  const weightSum = LOG_TEMPLATES.reduce((s, t) => s + t.weight, 0)
+  for (let i = 0; i < LOG_TOTAL; i++) {
+    let r = rnd() * weightSum
+    let tpl = LOG_TEMPLATES[0]
+    for (const t of LOG_TEMPLATES) {
+      r -= t.weight
+      if (r <= 0) { tpl = t; break }
+    }
+    // account management actions belong to the administrator
+    const userId = tpl.action.startsWith('user.') ? actorIds[0] : pick(actorIds)
+    const at = new Date(Date.now() - Math.floor(rnd() * 30 * 86400000) - Math.floor(rnd() * 86400000))
+    await query(
+      'INSERT INTO operation_logs (user_id, action, detail, created_at) VALUES ($1,$2,$3,$4)',
+      [userId, tpl.action, tpl.detail(), at.toISOString()]
+    )
+  }
+  console.log(`Seeded ${LOG_TOTAL} operation log entries.`)
+  return LOG_TOTAL
 }
 
 function randomDate(daysAgo: number): string {

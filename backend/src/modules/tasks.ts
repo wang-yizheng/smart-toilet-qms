@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { query } from '../config/db'
 import { authenticate } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
+import { writeLog } from '../lib/logger'
 
 export const tasksRouter = Router()
 tasksRouter.use(authenticate)
@@ -85,6 +86,7 @@ tasksRouter.post('/', async (req, res, next) => {
         b.note ?? null,
       ]
     )
+    await writeLog(req.user!.userId, 'task.create', `创建${b.type}检测任务 ${rows[0].task_no}`)
     res.status(201).json(rows[0])
   } catch (e) { next(e) }
 })
@@ -109,6 +111,8 @@ tasksRouter.patch('/:id', async (req, res, next) => {
     params.push(Number(req.params.id))
     const rows = await query(`UPDATE tasks SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`, params)
     if (!rows.length) throw new AppError(404, '任务不存在')
+    if (b.status) await writeLog(req.user!.userId, 'task.status', `任务 ${rows[0].task_no} 状态变更为「${b.status}」`)
+    else if (b.assignee_id !== undefined) await writeLog(req.user!.userId, 'task.assign', `任务 ${rows[0].task_no} 派工 / 调整负责人`)
     res.json(rows[0])
   } catch (e) { next(e) }
 })

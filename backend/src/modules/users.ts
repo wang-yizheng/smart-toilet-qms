@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs'
 import { query } from '../config/db'
 import { authenticate, requireRole } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
+import { writeLog } from '../lib/logger'
 
 export const usersRouter = Router()
 
@@ -35,6 +36,7 @@ usersRouter.post('/', requireRole('admin'), async (req: Request, res: Response, 
        VALUES ($1,$2,$3,$4,'active') RETURNING id, username, name, role, status`,
       [body.username, hash, body.name, body.role]
     )
+    await writeLog(req.user!.userId, 'user.create', `新增用户 ${body.username}（${body.name}），角色：${body.role}`)
     res.status(201).json(rows[0])
   } catch (err) {
     next(err)
@@ -64,6 +66,7 @@ usersRouter.patch('/:id', requireRole('admin'), async (req: Request, res: Respon
       params
     )
     if (!rows.length) throw new AppError(404, '用户不存在')
+    await writeLog(req.user!.userId, 'user.update', `修改用户 #${id}：${Object.keys(body).join('、')}`)
     res.json(rows[0])
   } catch (err) {
     next(err)
@@ -77,6 +80,7 @@ usersRouter.post('/:id/reset-password', requireRole('admin'), async (req: Reques
     const { password } = resetSchema.parse(req.body)
     const hash = await bcrypt.hash(password, 10)
     await query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, id])
+    await writeLog(req.user!.userId, 'user.reset_password', `重置用户 #${id} 的登录密码`)
     res.json({ message: '密码已重置' })
   } catch (err) {
     next(err)

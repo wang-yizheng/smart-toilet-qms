@@ -144,9 +144,34 @@ export interface Announcement {
   author_name?: string | null
 }
 
+export interface OperationLog {
+  id: number
+  user_id: number | null
+  action: string
+  detail: string | null
+  created_at: string
+  user_name?: string | null
+  username?: string | null
+}
+
 export const ROLE_LABELS: Record<string, string> = {
   admin: '系统管理员',
   qc_manager: '质检主管',
   inspector: '检测员',
   producer: '生产人员',
+}
+
+export const ACTION_LABELS: Record<string, string> = {
+  login: '用户登录',
+  'user.create': '新增用户',
+  'user.update': '修改用户',
+  'user.reset_password': '重置密码',
+  'task.create': '创建任务',
+  'task.assign': '任务派工',
+  'task.status': '任务状态变更',
+  'record.create': '录入检测记录',
+  'record.review': '审核检测记录',
+  'nc.dispose': '不合格品处置',
+  'announcement.create': '发布公告',
+  'standard.update': '调整检测标准',
 }

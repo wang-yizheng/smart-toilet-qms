@@ -2,7 +2,7 @@ import { createApp } from './app'
 import { env } from './config/env'
 import { logger } from './config/logger'
 import { ensureSchema, ensureAdminUsers } from './db/init'
-import { seedIfEmpty } from './db/seed'
+import { seedIfEmpty, seedOperationLogsIfEmpty } from './db/seed'
 
 const startServer = async () => {
   try {
@@ -10,6 +10,7 @@ const startServer = async () => {
     await ensureSchema()
     await ensureAdminUsers()
     await seedIfEmpty()
+    await seedOperationLogsIfEmpty()
 
     const app = createApp()
 

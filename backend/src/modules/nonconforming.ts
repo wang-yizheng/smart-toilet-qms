@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { query } from '../config/db'
 import { authenticate, requireRole } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
+import { writeLog } from '../lib/logger'
 
 export const nonconformingRouter = Router()
 nonconformingRouter.use(authenticate)
@@ -56,6 +57,11 @@ nonconformingRouter.patch('/:id', requireRole('admin', 'qc_manager', 'inspector'
     params.push(Number(req.params.id))
     const rows = await query(`UPDATE nonconforming SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`, params)
     if (!rows.length) throw new AppError(404, '记录不存在')
+    await writeLog(
+      req.user!.userId,
+      'nc.dispose',
+      `不合格品 #${rows[0].id} 处置：${rows[0].disposition ?? '待处理'}，状态：${rows[0].status}`
+    )
     res.json(rows[0])
   } catch (e) { next(e) }
 })

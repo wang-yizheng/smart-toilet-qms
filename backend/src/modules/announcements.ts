@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { query } from '../config/db'
 import { authenticate, requireRole } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
+import { writeLog } from '../lib/logger'
 
 export const announcementsRouter = Router()
 announcementsRouter.use(authenticate)
@@ -28,6 +29,7 @@ announcementsRouter.post('/', requireRole('admin', 'qc_manager'), async (req, re
       `INSERT INTO announcements (title, content, pinned, created_by) VALUES ($1,$2,$3,$4) RETURNING *`,
       [b.title, b.content ?? null, b.pinned ?? false, req.user!.userId]
     )
+    await writeLog(req.user!.userId, 'announcement.create', `发布公告：${b.title}`)
     res.status(201).json(r[0])
   } catch (e) { next(e) }
 })
