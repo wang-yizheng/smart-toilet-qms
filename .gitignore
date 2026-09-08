@@ -1,0 +1,12 @@
+node_modules
+dist
+.env
+*.log
+.DS_Store
+coverage
+frontend/dist
+
+# Genie platform scaffolding (not part of the project source)
+.codebuddy/
+.templates/
+.genie/
