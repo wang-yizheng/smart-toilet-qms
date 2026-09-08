@@ -4,6 +4,8 @@
 
 > 毕业设计演示系统。参考任务书《基于 SpringBoot + Vue 的智能马桶检测管理系统》的业务需求实现。
 
+**GitHub 仓库**：https://github.com/wang-yizheng/smart-toilet-qms
+
 ## 技术栈
 
 | 层 | 技术 |
