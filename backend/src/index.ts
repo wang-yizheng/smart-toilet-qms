@@ -3,6 +3,7 @@ import { env } from './config/env'
 import { logger } from './config/logger'
 import { ensureSchema, ensureAdminUsers } from './db/init'
 import { seedIfEmpty, seedOperationLogsIfEmpty } from './db/seed'
+import { startReminderJob } from './jobs/reminder'
 
 const startServer = async () => {
   try {
@@ -11,6 +12,9 @@ const startServer = async () => {
     await ensureAdminUsers()
     await seedIfEmpty()
     await seedOperationLogsIfEmpty()
+
+    // Periodic overdue / pending-review reminders
+    startReminderJob()
 
     const app = createApp()
 

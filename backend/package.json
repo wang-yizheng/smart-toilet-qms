@@ -26,12 +26,15 @@
     "compression": "^1.7.5",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
+    "exceljs": "^4.4.0",
     "express": "^4.21.2",
     "express-async-errors": "^3.1.1",
     "jsonwebtoken": "^9.0.2",
+    "multer": "^2.3.0",
     "pg": "^8.13.1",
     "pino": "^10.1.0",
     "pino-http": "^11.0.0",
+    "xlsx": "^0.18.5",
     "zod": "^3.24.1"
   },
   "devDependencies": {
@@ -41,6 +44,7 @@
     "@types/express": "^5.0.0",
     "@types/jest": "^29.5.14",
     "@types/jsonwebtoken": "^9.0.7",
+    "@types/multer": "^2.2.0",
     "@types/node": "^22.10.2",
     "@types/pg": "^8.11.10",
     "@types/supertest": "^6.0.2",

@@ -141,3 +141,30 @@ CREATE INDEX IF NOT EXISTS idx_records_detected ON records(detected_at);
 CREATE INDEX IF NOT EXISTS idx_results_record ON results(record_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_nonconforming_status ON nonconforming(status);
+CREATE INDEX IF NOT EXISTS idx_operation_logs_created ON operation_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_operation_logs_action ON operation_logs(action);
+
+-- In-app notifications (overdue tasks, records pending review, ...)
+CREATE TABLE IF NOT EXISTS notifications (
+  id         SERIAL PRIMARY KEY,
+  user_id    INT REFERENCES users(id) ON DELETE CASCADE,
+  type       VARCHAR(40) NOT NULL DEFAULT 'system',
+  title      VARCHAR(120) NOT NULL,
+  content    TEXT,
+  ref_type   VARCHAR(30),
+  ref_id     INT,
+  is_read    BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, is_read);
+
+-- On-site photos attached to a detection record
+CREATE TABLE IF NOT EXISTS record_photos (
+  id          SERIAL PRIMARY KEY,
+  record_id   INT REFERENCES records(id) ON DELETE CASCADE,
+  file_path   VARCHAR(255) NOT NULL,
+  file_name   VARCHAR(120),
+  uploaded_by INT REFERENCES users(id) ON DELETE SET NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_photos_record ON record_photos(record_id);

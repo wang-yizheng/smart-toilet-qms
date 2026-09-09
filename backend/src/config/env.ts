@@ -20,6 +20,8 @@ const envSchema = z.object({
     .default('postgres://postgres:Tencent2025@localhost:5432/genie?schema=public'),
   JWT_SECRET: z.string().default('smart-toilet-genie-secret-change-me'),
   JWT_EXPIRES_IN: z.string().default('7d'),
+  // Shared key required in the X-Device-Key header for detection-equipment uploads
+  DEVICE_API_KEY: z.string().default('device-secret'),
 })
 
 const parseEnv = () => {

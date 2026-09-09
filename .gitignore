@@ -10,3 +10,7 @@ frontend/dist
 .codebuddy/
 .templates/
 .genie/
+
+# Runtime artifacts
+backend/uploads/
+backups/

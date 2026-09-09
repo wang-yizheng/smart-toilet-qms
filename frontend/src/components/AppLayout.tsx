@@ -14,14 +14,18 @@ import {
   LogOut,
   Toilet,
 } from 'lucide-react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { apiClient } from '@/lib/api-client'
+import { fmtDateTime } from '@/lib/format'
 import { useAuth } from '@/lib/auth'
-import { ROLE_LABELS } from '@/types'
+import { ROLE_LABELS, type Notification } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Separator } from '@/components/ui/separator'
@@ -66,6 +70,23 @@ export function AppLayout() {
   const location = useLocation()
   const items = NAV.filter((i) => user && i.roles.includes(user.role))
 
+  const qc = useQueryClient()
+  const { data: notif } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: () =>
+      apiClient.get('/notifications').then((r) => r.data as { items: Notification[]; unread: number }),
+    refetchInterval: 60_000,
+  })
+  const readMut = useMutation({
+    mutationFn: (id: number) => apiClient.patch(`/notifications/${id}/read`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
+  })
+  const readAllMut = useMutation({
+    mutationFn: () => apiClient.post('/notifications/read-all'),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
+  })
+  const unread = notif?.unread ?? 0
+
   return (
     <div className="flex h-screen bg-muted/30">
       {/* Sidebar */}
@@ -107,9 +128,53 @@ export function AppLayout() {
       <div className="flex-1 flex flex-col min-w-0">
         <header className="h-16 shrink-0 bg-card border-b flex items-center justify-between px-6">
           <h1 className="text-lg font-semibold">{TITLES[location.pathname] ?? '智能马桶检测管理系统'}</h1>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="flex items-center gap-2 px-2">
+          <div className="flex items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="relative">
+                  <Bell className="h-5 w-5" />
+                  {unread > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 h-4 min-w-4 rounded-full bg-destructive px-1 text-center text-[10px] leading-4 text-white">
+                      {unread > 99 ? '99+' : unread}
+                    </span>
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-80">
+                <div className="flex items-center justify-between px-2 py-1.5">
+                  <span className="text-sm font-medium">消息通知</span>
+                  {unread > 0 && (
+                    <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => readAllMut.mutate()}>
+                      全部已读
+                    </Button>
+                  )}
+                </div>
+                <DropdownMenuSeparator />
+                {(notif?.items ?? []).length ? (
+                  (notif!.items).map((n) => (
+                    <DropdownMenuItem
+                      key={n.id}
+                      className="flex flex-col items-start gap-1 py-2"
+                      onClick={() => !n.is_read && readMut.mutate(n.id)}
+                    >
+                      <div className="flex w-full items-center gap-2">
+                        {!n.is_read && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-destructive" />}
+                        <span className="truncate text-sm font-medium">{n.title}</span>
+                        <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">{n.type_label}</span>
+                      </div>
+                      <span className="text-xs text-muted-foreground">{n.content}</span>
+                      <span className="text-[10px] text-muted-foreground">{fmtDateTime(n.created_at)}</span>
+                    </DropdownMenuItem>
+                  ))
+                ) : (
+                  <div className="px-2 py-6 text-center text-sm text-muted-foreground">暂无消息</div>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="flex items-center gap-2 px-2">
                 <Avatar className="h-8 w-8">
                   <AvatarFallback className="bg-primary/10 text-primary text-xs">
                     {user?.name?.slice(0, 1)}
@@ -127,6 +192,7 @@ export function AppLayout() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          </div>
         </header>
         <Separator />
         <main className="flex-1 overflow-y-auto p-6">

@@ -18,6 +18,9 @@ import { statsRouter } from './modules/stats'
 import { reportsRouter } from './modules/reports'
 import { announcementsRouter } from './modules/announcements'
 import { logsRouter } from './modules/logs'
+import { notificationsRouter } from './modules/notifications'
+import { deviceRouter } from './modules/device'
+import { UPLOAD_DIR, ensureUploadDir } from './lib/uploads'
 
 export const createApp = (): Application => {
   const app = express()
@@ -58,6 +61,14 @@ export const createApp = (): Application => {
   app.use(`${env.API_PREFIX}/reports`, reportsRouter)
   app.use(`${env.API_PREFIX}/announcements`, announcementsRouter)
   app.use(`${env.API_PREFIX}/logs`, logsRouter)
+  app.use(`${env.API_PREFIX}/notifications`, notificationsRouter)
+
+  // Detection-equipment ingest endpoint (authenticated with X-Device-Key)
+  app.use(`${env.API_PREFIX}/device`, deviceRouter)
+
+  // Uploaded on-site photos
+  ensureUploadDir()
+  app.use('/uploads', express.static(UPLOAD_DIR))
 
   app.use(errorHandler)
 

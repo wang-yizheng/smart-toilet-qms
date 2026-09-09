@@ -17,6 +17,9 @@ export const LOG_ACTIONS: Record<string, string> = {
   'nc.dispose': '不合格品处置',
   'announcement.create': '发布公告',
   'standard.update': '调整检测标准',
+  'record.import': '表格批量导入',
+  'report.export': '导出检验报告',
+  'device.ingest': '设备数据接入',
 }
 
 /**

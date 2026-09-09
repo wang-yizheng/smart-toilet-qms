@@ -174,4 +174,30 @@ export const ACTION_LABELS: Record<string, string> = {
   'nc.dispose': '不合格品处置',
   'announcement.create': '发布公告',
   'standard.update': '调整检测标准',
+  'record.import': '表格批量导入',
+  'report.export': '导出检验报告',
+  'device.ingest': '设备数据接入',
+}
+
+export interface Notification {
+  id: number
+  user_id: number
+  type: string
+  title: string
+  content?: string | null
+  ref_type?: string | null
+  ref_id?: number | null
+  is_read: boolean
+  created_at: string
+  type_label?: string
+}
+
+export interface RecordPhoto {
+  id: number
+  record_id: number
+  file_path: string
+  file_name?: string | null
+  uploaded_by?: number | null
+  created_at: string
+  uploader_name?: string | null
 }

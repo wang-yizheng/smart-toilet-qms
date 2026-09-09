@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Printer, FileText } from 'lucide-react'
+import { Printer, FileText, FileSpreadsheet } from 'lucide-react'
+import { toast } from 'sonner'
 import { fmtDate, fmtDateTime, resultLabel, resultVariant } from '@/lib/format'
 import type { Batch } from '@/types'
 
@@ -32,6 +33,26 @@ export default function Reports() {
 
   const modelOf = (id?: number) => products?.find((p) => p.id === id)?.model ?? ''
 
+  const [exporting, setExporting] = useState(false)
+  const exportExcel = async () => {
+    if (!effBid) return
+    setExporting(true)
+    try {
+      const res = await apiClient.get(`/reports/batch/${effBid}/export`, { responseType: 'blob' })
+      const url = URL.createObjectURL(res.data)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `出厂检验报告-${report?.batch?.batch_no ?? effBid}.xlsx`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success('报告已导出')
+    } catch {
+      toast.error('导出失败')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
@@ -40,7 +61,10 @@ export default function Reports() {
           <SelectTrigger className="w-72"><SelectValue placeholder="选择批次" /></SelectTrigger>
           <SelectContent>{batches?.map((b) => <SelectItem key={b.id} value={String(b.id)}>{b.batch_no}（{modelOf(b.product_id)}）</SelectItem>)}</SelectContent>
         </Select>
-        <Button variant="outline" className="ml-auto" onClick={() => window.print()} disabled={!report}><Printer className="h-4 w-4 mr-1" />打印 / 导出</Button>
+        <Button variant="outline" className="ml-auto" onClick={exportExcel} disabled={!report || exporting}>
+          <FileSpreadsheet className="h-4 w-4 mr-1" />{exporting ? '导出中…' : '导出 Excel'}
+        </Button>
+        <Button variant="outline" onClick={() => window.print()} disabled={!report}><Printer className="h-4 w-4 mr-1" />打印</Button>
       </div>
 
       {isLoading && <div className="text-muted-foreground">加载中…</div>}

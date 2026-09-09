@@ -5,6 +5,10 @@ import { authenticate } from '../middleware/auth'
 import { AppError } from '../middleware/errorHandler'
 import { judgeMeasurement, aggregateResult } from '../lib/judge'
 import { writeLog } from '../lib/logger'
+import { uploadDisk, uploadMemory, UPLOAD_DIR } from '../lib/uploads'
+import * as XLSX from 'xlsx'
+import path from 'node:path'
+import fs from 'node:fs'
 
 export const recordsRouter = Router()
 recordsRouter.use(authenticate)
@@ -35,12 +39,12 @@ async function loadStandards(productId: number): Promise<StdMap> {
  * record verdict (pass/fail) is aggregated, and unqualified items automatically
  * generate nonconforming records.
  */
-async function createRecordWithResults(
+export async function createRecordWithResults(
   input: {
     task_id?: number | null
     product_id: number
     batch_id?: number | null
-    inspector_id: number
+    inspector_id: number | null
     detected_at?: string
     env_note?: string | null
     results: { item_id: number; value: number | null }[]
@@ -164,6 +168,137 @@ recordsRouter.post('/bulk', async (req, res, next) => {
       )
     }
     res.status(201).json({ count: created.length, records: created })
+  } catch (e) { next(e) }
+})
+
+// ------------------------------------------------------------------
+// Spreadsheet import (.xlsx / .csv)
+// ------------------------------------------------------------------
+recordsRouter.get('/import/template', async (_req, res, next) => {
+  try {
+    const items = await query('SELECT name FROM detection_items ORDER BY group_name, code')
+    const products = await query('SELECT model FROM products ORDER BY model LIMIT 1')
+    const header = ['产品型号', '批次号', '检测时间', ...items.map((i: any) => i.name)]
+    const sample = [
+      products[0]?.model ?? 'ZN-2001',
+      '',
+      new Date().toISOString().slice(0, 19).replace('T', ' '),
+      ...items.map(() => 0),
+    ]
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([header, sample]), '检测记录导入模板')
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    res.setHeader('Content-Disposition', 'attachment; filename="detection-import-template.xlsx"')
+    res.send(buf)
+  } catch (e) { next(e) }
+})
+
+recordsRouter.post('/import', uploadMemory.single('file'), async (req, res, next) => {
+  try {
+    if (!req.file) throw new AppError(400, '请选择要导入的表格文件')
+    const wb = XLSX.read(req.file.buffer, { type: 'buffer' })
+    const sheet = wb.Sheets[wb.SheetNames[0]]
+    if (!sheet) throw new AppError(400, '表格中没有可读取的工作表')
+    const rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: null })
+    if (!rows.length) throw new AppError(400, '表格中没有数据行')
+
+    const items = await query('SELECT id, code, name FROM detection_items')
+    const created: any[] = []
+    const errors: string[] = []
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i]
+      const lineNo = i + 2
+      const model = String(row['产品型号'] ?? '').trim()
+      if (!model) { errors.push(`第 ${lineNo} 行：缺少产品型号`); continue }
+
+      const prod = await query('SELECT id FROM products WHERE model = $1', [model])
+      if (!prod.length) { errors.push(`第 ${lineNo} 行：未找到产品型号 ${model}`); continue }
+
+      let batchId: number | null = null
+      const batchNo = String(row['批次号'] ?? '').trim()
+      if (batchNo) {
+        const bt = await query('SELECT id FROM batches WHERE batch_no = $1', [batchNo])
+        if (bt.length) batchId = bt[0].id
+      }
+
+      let detectedAt: string | undefined
+      const raw = row['检测时间']
+      if (raw) {
+        const d = new Date(raw)
+        if (!Number.isNaN(d.getTime())) detectedAt = d.toISOString()
+      }
+
+      const results: { item_id: number; value: number | null }[] = []
+      for (const [key, value] of Object.entries(row)) {
+        if (['产品型号', '批次号', '检测时间'].includes(key)) continue
+        if (value === null || value === undefined || value === '') continue
+        const item = items.find((it: any) => it.name === key || it.code === key)
+        if (!item) continue
+        const num = Number(value)
+        results.push({ item_id: item.id, value: Number.isNaN(num) ? null : num })
+      }
+      if (!results.length) { errors.push(`第 ${lineNo} 行：未识别到任何检测项数据`); continue }
+
+      try {
+        created.push(
+          await createRecordWithResults({
+            product_id: prod[0].id,
+            batch_id: batchId,
+            inspector_id: req.user!.userId,
+            detected_at: detectedAt,
+            env_note: '表格批量导入',
+            results,
+          })
+        )
+      } catch (err: any) {
+        errors.push(`第 ${lineNo} 行：${err?.message ?? '导入失败'}`)
+      }
+    }
+
+    await writeLog(req.user!.userId, 'record.import', `表格导入检测记录 ${created.length} 条`)
+    res.status(201).json({ created: created.length, records: created, errors })
+  } catch (e) { next(e) }
+})
+
+// ------------------------------------------------------------------
+// On-site photos
+// ------------------------------------------------------------------
+recordsRouter.post('/:id/photos', uploadDisk.single('file'), async (req, res, next) => {
+  try {
+    if (!req.file) throw new AppError(400, '请选择要上传的图片')
+    const rows = await query(
+      `INSERT INTO record_photos (record_id, file_path, file_name, uploaded_by)
+       VALUES ($1,$2,$3,$4) RETURNING *`,
+      [Number(req.params.id), `/uploads/${req.file.filename}`, req.file.originalname, req.user!.userId]
+    )
+    res.status(201).json(rows[0])
+  } catch (e) { next(e) }
+})
+
+recordsRouter.get('/:id/photos', async (req, res, next) => {
+  try {
+    const rows = await query(
+      `SELECT p.*, u.name AS uploader_name FROM record_photos p
+       LEFT JOIN users u ON p.uploaded_by = u.id
+       WHERE p.record_id = $1 ORDER BY p.created_at DESC`,
+      [Number(req.params.id)]
+    )
+    res.json(rows)
+  } catch (e) { next(e) }
+})
+
+recordsRouter.delete('/photo/:photoId', async (req, res, next) => {
+  try {
+    const rows = await query('SELECT * FROM record_photos WHERE id = $1', [Number(req.params.photoId)])
+    if (!rows.length) throw new AppError(404, '图片不存在')
+    await query('DELETE FROM record_photos WHERE id = $1', [Number(req.params.photoId)])
+    try {
+      const file = path.join(UPLOAD_DIR, path.basename(rows[0].file_path))
+      if (fs.existsSync(file)) fs.unlinkSync(file)
+    } catch { /* ignore cleanup failures */ }
+    res.json({ message: 'deleted' })
   } catch (e) { next(e) }
 })
 

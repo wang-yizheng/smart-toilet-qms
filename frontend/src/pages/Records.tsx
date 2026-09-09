@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api-client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -11,10 +11,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from 'sonner'
-import { Plus, Eye, CheckCircle2, XCircle } from 'lucide-react'
+import { Plus, Eye, CheckCircle2, XCircle, Download, Upload, ImagePlus } from 'lucide-react'
 import { fmtDateTime, fmtNum, resultLabel, resultVariant, toNum } from '@/lib/format'
 import { useAuth } from '@/lib/auth'
-import type { RecordRow, Product, Batch, User, Standard, ResultRow } from '@/types'
+import type { RecordRow, Product, Batch, User, Standard, ResultRow, RecordPhoto } from '@/types'
 
 export default function Records() {
   const me = useAuth()
@@ -63,6 +63,58 @@ export default function Records() {
     onError: (e: any) => toast.error(e?.response?.data?.message || '操作失败'),
   })
 
+  // ---- spreadsheet import ----
+  const fileRef = useRef<HTMLInputElement>(null)
+  const importMut = useMutation({
+    mutationFn: (file: File) => {
+      const fd = new FormData()
+      fd.append('file', file)
+      return apiClient.post('/records/import', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+    },
+    onSuccess: (res) => {
+      const d = res.data
+      toast.success(`导入完成：成功 ${d.created} 条${d.errors?.length ? `，跳过 ${d.errors.length} 行` : ''}`)
+      if (d.errors?.length) toast.error(d.errors.slice(0, 3).join('；'))
+      qc.invalidateQueries({ queryKey: ['records'] }); qc.invalidateQueries({ queryKey: ['overview'] })
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || '导入失败'),
+  })
+  const downloadTemplate = async () => {
+    try {
+      const res = await apiClient.get('/records/import/template', { responseType: 'blob' })
+      const url = URL.createObjectURL(res.data)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = '检测记录导入模板.xlsx'
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      toast.error('模板下载失败')
+    }
+  }
+
+  // ---- on-site photos ----
+  const photoRef = useRef<HTMLInputElement>(null)
+  const photos = useQuery({
+    queryKey: ['record-photos', detail],
+    enabled: detail != null,
+    queryFn: () => apiClient.get(`/records/${detail}/photos`).then((r) => r.data as RecordPhoto[]),
+  })
+  const uploadPhotoMut = useMutation({
+    mutationFn: (file: File) => {
+      const fd = new FormData()
+      fd.append('file', file)
+      return apiClient.post(`/records/${detail}/photos`, fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+    },
+    onSuccess: () => { toast.success('照片已上传'); qc.invalidateQueries({ queryKey: ['record-photos', detail] }) },
+    onError: (e: any) => toast.error(e?.response?.data?.message || '上传失败'),
+  })
+  const delPhotoMut = useMutation({
+    mutationFn: (id: number) => apiClient.delete(`/records/photo/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['record-photos', detail] }),
+    onError: (e: any) => toast.error(e?.response?.data?.message || '删除失败'),
+  })
+
   const submit = () => {
     if (!form.product_id) return toast.error('请选择产品型号')
     if (!standards?.length) return toast.error('该产品未配置检测标准')
@@ -96,6 +148,17 @@ export default function Records() {
           <SelectContent><SelectItem value="">全部判定</SelectItem><SelectItem value="pass">合格</SelectItem><SelectItem value="fail">不合格</SelectItem><SelectItem value="pending">待判定</SelectItem></SelectContent>
         </Select>
         <Button variant="outline" onClick={() => setFilters({ product_id: '', result: '', inspector_id: '' })}>重置</Button>
+        <Button variant="outline" onClick={downloadTemplate}><Download className="h-4 w-4 mr-1" />导入模板</Button>
+        <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={importMut.isPending}>
+          <Upload className="h-4 w-4 mr-1" />{importMut.isPending ? '导入中…' : '表格导入'}
+        </Button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".xlsx,.xls,.csv"
+          className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) importMut.mutate(f); e.target.value = '' }}
+        />
         <Button className="ml-auto" onClick={() => { setForm({ product_id: '', batch_id: '', inspector_id: String(me.user?.id ?? ''), detected_at: '', env_note: '' }); setValues({}); setOpen(true) }}>
           <Plus className="h-4 w-4 mr-1" />录入检测数据
         </Button>
@@ -220,6 +283,42 @@ export default function Records() {
               </Table>
             </div>
           )}
+
+          {detailData.data && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>现场照片（{photos.data?.length ?? 0}）</Label>
+                <Button variant="outline" size="sm" onClick={() => photoRef.current?.click()} disabled={uploadPhotoMut.isPending}>
+                  <ImagePlus className="h-4 w-4 mr-1" />上传照片
+                </Button>
+                <input
+                  ref={photoRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadPhotoMut.mutate(f); e.target.value = '' }}
+                />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {(photos.data ?? []).map((p) => (
+                  <div key={p.id} className="group relative">
+                    <a href={p.file_path} target="_blank" rel="noreferrer">
+                      <img src={p.file_path} alt={p.file_name ?? '现场照片'} className="h-20 w-20 rounded border object-cover" />
+                    </a>
+                    <button
+                      type="button"
+                      className="absolute -right-1 -top-1 hidden h-5 w-5 items-center justify-center rounded-full bg-destructive text-xs text-white group-hover:flex"
+                      onClick={() => delPhotoMut.mutate(p.id)}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+                {!(photos.data ?? []).length && <p className="text-xs text-muted-foreground">暂无现场照片，可上传检测现场图片留档</p>}
+              </div>
+            </div>
+          )}
+
           <DialogFooter><Button onClick={() => setDetail(null)}>关闭</Button></DialogFooter>
         </DialogContent>
       </Dialog>

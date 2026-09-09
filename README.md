@@ -14,6 +14,22 @@
 | 后端 | Node.js + Express + TypeScript（tsx 运行）+ Zod 校验 |
 | 数据库 | PostgreSQL（node-postgres） |
 
+## 技术选型说明（重要）
+
+任务书与开题报告规定的技术路线为 `SpringBoot + Vue3 + Element Plus + MyBatis-Plus + MySQL + Redis + ECharts + Apache POI`。本系统由 AI 应用生成平台构建，平台生成的项目使用固定的 React + Node.js 技术体系，不支持切换为 Java 技术栈，因此实际实现如下：
+
+| 任务书要求 | 本系统实现 | 差异说明 |
+| --- | --- | --- |
+| Vue 3 + Element Plus | React 19 + Tailwind CSS + Radix UI | 组件化前端，页面结构与交互一致 |
+| SpringBoot | Node.js + Express + TypeScript | 分层路由 + 中间件，等价的 REST 服务 |
+| MyBatis-Plus | node-postgres 原生 SQL | 数据访问层，SQL 显式可控 |
+| MySQL | PostgreSQL | 关系型数据库，表结构与约束一致 |
+| Redis | 未引入（接口均为无状态设计） | 可直接接入 Redis 做会话与热点数据缓存 |
+| ECharts | Recharts | 图表类型与统计口径一致 |
+| Apache POI | ExcelJS | 检验报告导出为 `.xlsx` 文件 |
+
+业务建模、数据库设计、合格判定算法、SPC/Cpk 统计口径与业务流程均按任务书要求实现，差异仅在框架与运行时。若送审或答辩要求必须使用任务书规定的技术栈，可复用本系统的数据库设计与判定逻辑进行迁移：业务逻辑可以平移，工作量主要在框架替换。
+
 ## 目录结构
 
 ```
@@ -29,8 +45,11 @@
 │       ├── db/                # 建表脚本、演示数据脚本、测试用例
 │       ├── lib/judge.ts       # 合格判定核心逻辑（纯函数，可单测）
 │       ├── lib/logger.ts      # 操作日志写入（关键操作留痕）
+│       ├── lib/uploads.ts     # 附件上传（现场照片 / 表格导入）
+│       ├── jobs/              # 定时任务（超期、待审、待处置提醒）
 │       ├── middleware/        # 认证与角色鉴权
 │       └── modules/           # 各业务模块路由
+├── scripts/                   # 运维脚本（数据库每日备份）
 └── docs/                      # 产品说明
 ```
 
@@ -119,6 +138,55 @@ cd backend && pnpm test
 - **权限隔离**：仅系统管理员与质检主管可查看，检测员与生产人员访问返回 403。
 
 后端接口：`GET /api/logs`、`GET /api/logs/actions`、`GET /api/logs/stats`。
+
+## 数据采集与集成
+
+- **表格批量导入**：`POST /api/records/import`（multipart，支持 `.xlsx` / `.xls` / `.csv`），导入模板见 `GET /api/records/import/template`。导入时按产品标准自动判定，逐行返回成功与失败原因。
+- **检测设备接口**：`POST /api/device/ingest`，请求头 `X-Device-Key: <DEVICE_API_KEY>`（默认 `device-secret`），按检测项编码或名称上报实测值，服务端自动判定并生成记录。`GET /api/device/schema` 可获取检测项与产品型号清单。
+- **现场照片留档**：`POST /api/records/:id/photos` 上传，`GET /api/records/:id/photos` 查看，`/uploads/**` 提供静态访问。
+- **超期与待审提醒**：服务启动后每 30 分钟扫描一次超期任务、超过 2 天未审核的记录与未闭环不合格品，生成站内消息（`GET /api/notifications`），顶部消息中心实时显示未读数。
+
+## 数据备份
+
+`scripts/backup-db.sh` 使用 `pg_dump` 导出并压缩，默认保留最近 7 天。
+
+```bash
+chmod +x scripts/backup-db.sh
+./scripts/backup-db.sh
+
+# 每日凌晨 2 点自动备份
+0 2 * * * /workspace/scripts/backup-db.sh >> /var/log/toilet-qms-backup.log 2>&1
+```
+
+恢复：
+
+```bash
+gunzip -c backups/smart-toilet-YYYYMMDD-HHMMSS.sql.gz | psql "$DATABASE_URL"
+```
+
+## 生产部署
+
+前端构建为静态资源由 Nginx 直接托管，后端作为服务运行，Nginx 反向代理 `/api` 与 `/uploads`。
+
+```nginx
+server {
+  listen 80;
+  server_name your-domain.com;
+
+  root  /var/www/smart-toilet/dist;   # cd frontend && pnpm build 的产物
+  index index.html;
+  location / { try_files $uri $uri/ /index.html; }
+
+  location /api/     { proxy_pass http://127.0.0.1:3000; proxy_set_header Host $host; }
+  location /uploads/ { proxy_pass http://127.0.0.1:3000; }
+}
+```
+
+后端进程守护：
+
+```bash
+cd backend && pnpm build && pm2 start dist/index.js --name smart-toilet-api
+```
 
 ## 判定规则
 
